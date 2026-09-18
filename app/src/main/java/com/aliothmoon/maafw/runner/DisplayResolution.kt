@@ -18,8 +18,8 @@ data class DisplayResolution(val width: Int, val height: Int) {
  * 现在解析后无人消费，见 docs/pi-compatibility.md
  */
 enum class ResolutionPreference(val resolution: DisplayResolution) {
-    P720(DisplayResolution(1280, 720)),
-    P1080(DisplayResolution(1920, 1080)),
+    P720(DisplayResolution(720, 1280)),
+    P1080(DisplayResolution(1080, 1920)),
 }
 
 /**

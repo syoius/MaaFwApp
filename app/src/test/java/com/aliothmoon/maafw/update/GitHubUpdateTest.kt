@@ -13,6 +13,45 @@ import org.junit.Test
 
 class GitHubUpdateTest {
 
+    @Test
+    fun `client prefix skips newer MFA releases and resolves the matching APK`() = runBlocking {
+        val prefix = "MaaYuan-MaaFwApp-preview-"
+        val name = "${prefix}v2.0.0-arm64-v8a.apk"
+        val payload = releases(
+            release("v3.0.0", assets = assets(asset("MaaYuan-v3.0.0-android-arm64.apk"))),
+            release("v2.5.0", assets = assets(asset("${prefix}v2.5.0-x86_64.apk"))),
+            release("v2.0.0", assets = assets(asset("MaaYuan-v2.0.0-android-arm64.apk"), asset(name))),
+        )
+        val check = client(RecordingHttpClientHelper(FakeHttpResponse(200, payload)))
+            .check(checkRequest().copy(githubAssetPrefix = prefix)) as UpdateCheckResult.UpdateAvailable
+        assertEquals("v2.0.0", check.info.version)
+        val resolved = client(RecordingHttpClientHelper(FakeHttpResponse(200, payload)))
+            .resolve(resolveRequest().copy(githubAssetPrefix = prefix)) as UpdateResolveResult.Resolved
+        assertEquals("v2.0.0", resolved.update.version)
+        assertEquals("https://example.com/$name", resolved.update.downloadUrl)
+    }
+
+    @Test
+    fun `MFA APK alone never becomes an update for the preview client`() = runBlocking {
+        val payload = releases(release("v2.0.0", assets = assets(asset("MaaYuan-v2.0.0-android-arm64.apk"))))
+        val prefix = "MaaYuan-MaaFwApp-preview-"
+        assertEquals(
+            UpdateCheckResult.SourceFailed(UpdateSource.GITHUB, UpdateCheckFailure.NO_MATCHING_ASSET),
+            client(RecordingHttpClientHelper(FakeHttpResponse(200, payload))).check(checkRequest().copy(githubAssetPrefix = prefix)),
+        )
+        assertEquals(
+            UpdateResolveResult.Failed(UpdateSource.GITHUB, UpdateCheckFailure.NO_MATCHING_ASSET),
+            client(RecordingHttpClientHelper(FakeHttpResponse(200, payload))).resolve(resolveRequest().copy(githubAssetPrefix = prefix)),
+        )
+    }
+
+    @Test
+    fun `unknown ABI only accepts an unambiguous universal APK`() {
+        val api = api(RecordingHttpClientHelper())
+        assertNull(api.selectAsset(listOf(GitHubReleasesApi.Asset("app-arm64.apk", "https://example.com/app.apk", null)), AndroidAbi.ANY))
+        assertEquals("app.apk", api.selectAsset(listOf(GitHubReleasesApi.Asset("app.apk", "https://example.com/app.apk", null)), AndroidAbi.ANY)?.name)
+    }
+
     private fun api(gateway: RecordingHttpClientHelper) = GitHubReleasesApi(gateway.mock)
 
     private fun client(gateway: RecordingHttpClientHelper) = GitHubUpdateClient(api(gateway))

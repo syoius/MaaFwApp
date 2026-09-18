@@ -71,12 +71,21 @@ internal class GitHubReleasesApi(
     }
 
     /** 渠道过滤 + 版本解析；无一条合格返回 null */
-    fun latestEligible(releases: List<Release>, channel: UpdateChannel): Pair<Release, UpdateVersion>? =
+    fun latestEligible(
+        releases: List<Release>,
+        channel: UpdateChannel,
+        abi: AndroidAbi = AndroidAbi.ANY,
+        assetPrefix: String? = null,
+    ): Pair<Release, UpdateVersion>? =
         releases
             .mapNotNull { candidate ->
                 val version = UpdateVersion.parse(candidate.tag) ?: return@mapNotNull null
                 if (!version.allowedFor(channel)) return@mapNotNull null
                 if (channel == UpdateChannel.STABLE && candidate.prerelease) return@mapNotNull null
+                // 同一 release 可以发布多套 Android 客户端；先筛客户端和 ABI，再比版本。
+                if (!assetPrefix.isNullOrBlank() && selectAsset(candidate.assets, abi, assetPrefix) == null) {
+                    return@mapNotNull null
+                }
                 candidate to version
             }
             .maxByOrNull { it.second }
@@ -86,11 +95,11 @@ internal class GitHubReleasesApi(
      * （不带任何 ABI 标记的单个 apk）；两者都没有或 universal 歧义返回 null，
      * 交由上层报 NO_MATCHING_ASSET
      */
-    fun selectAsset(assets: List<Asset>, abi: AndroidAbi): Asset? {
-        val apkAssets = assets.filter(Asset::isApk)
+    fun selectAsset(assets: List<Asset>, abi: AndroidAbi, assetPrefix: String? = null): Asset? {
+        val apkAssets = assets.filter { it.isApk && (assetPrefix.isNullOrBlank() || it.name.startsWith(assetPrefix)) }
         apkAssets
             .mapNotNull { asset ->
-                ABI_MARKERS.getValue(abi).indexOfFirst { asset.name.matchesAlias(it) }
+                ABI_MARKERS[abi].orEmpty().indexOfFirst { asset.name.matchesAlias(it) }
                     .takeIf { it >= 0 }
                     ?.let { it to asset }
             }
@@ -195,7 +204,7 @@ internal class GitHubUpdateClient(
 
             is UpdateSourceOutcome.Ok -> outcome.value
         }
-        val candidate = api.latestEligible(releases, request.channel)
+        val candidate = api.latestEligible(releases, request.channel, request.abi, request.githubAssetPrefix)
             ?: return UpdateCheckResult.SourceFailed(source, UpdateCheckFailure.NO_MATCHING_ASSET)
         val (release, version) = candidate
         if (version <= currentVersion) {
@@ -226,9 +235,9 @@ internal class GitHubUpdateClient(
 
             is UpdateSourceOutcome.Ok -> outcome.value
         }
-        val (release, _) = api.latestEligible(releases, request.channel)
+        val (release, _) = api.latestEligible(releases, request.channel, request.abi, request.githubAssetPrefix)
             ?: return UpdateResolveResult.Failed(source, UpdateCheckFailure.NO_MATCHING_ASSET)
-        val asset = api.selectAsset(release.assets, request.abi)
+        val asset = api.selectAsset(release.assets, request.abi, request.githubAssetPrefix)
             ?: return UpdateResolveResult.Failed(source, UpdateCheckFailure.NO_MATCHING_ASSET)
         UpdateResolveResult.Resolved(
             ResolvedUpdate(

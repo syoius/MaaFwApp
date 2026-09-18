@@ -83,7 +83,20 @@ object ActivityUtils {
      * 拆不出来时原样返回，让调用方按纯包名走既有失败路径
      */
     @JvmStatic
-    fun packageNameOf(spec: String): String = componentOf(spec)?.packageName ?: spec
+    fun packageNameOf(spec: String): String {
+        val requested = componentOf(spec)?.packageName ?: spec
+        val alternatives = when (requested) {
+            "com.qookkagames.codekite.gw.hk" -> listOf(requested, "com.qookkagames.codekite.gp.hk")
+            "com.qookkagames.codekite.gp.hk" -> listOf(requested, "com.qookkagames.codekite.gw.hk")
+            "com.sialiagames.codekite.gw.tw" -> listOf(requested, "com.sialiagames.codekite.gp.tw")
+            "com.sialiagames.codekite.gp.tw" -> listOf(requested, "com.sialiagames.codekite.gw.tw")
+            else -> return requested
+        }
+        val pm = FakeContext.get().packageManager
+        return alternatives.firstOrNull { candidate ->
+            runCatching { pm.getPackageInfo(candidate, 0) }.isSuccess
+        } ?: requested
+    }
 
     private fun componentOf(spec: String): ComponentName? =
         spec.takeIf { it.contains('/') }?.let { ComponentName.unflattenFromString(it) }
@@ -98,16 +111,16 @@ object ActivityUtils {
     ): Boolean {
         val pm = FakeContext.get().packageManager
 
-        val component = componentOf(packageName)
-        val targetPackage = component?.packageName ?: packageName
+        val targetPackage = packageNameOf(packageName)
+        val component = componentOf(packageName)?.takeIf { it.packageName == targetPackage }
 
         val intent = if (component != null) {
             Intent(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_LAUNCHER)
                 .setComponent(component)
         } else {
-            pm.getLaunchIntentForPackage(packageName)
-                ?: pm.getLeanbackLaunchIntentForPackage(packageName)
+            pm.getLaunchIntentForPackage(targetPackage)
+                ?: pm.getLeanbackLaunchIntentForPackage(targetPackage)
         }
 
         if (intent == null) {

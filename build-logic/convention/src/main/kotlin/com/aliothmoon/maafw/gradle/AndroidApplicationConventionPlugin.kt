@@ -55,7 +55,11 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
             android.defaultConfig {
                 applicationId = maafwApplicationId()
                 targetSdk = TARGET_SDK
-                versionCode = gitVersionCode()
+                versionCode = textSetting("build.versionCode", "BUILD_VERSION_CODE")?.let {
+                    requireNotNull(it.toIntOrNull()?.takeIf { code -> code in 1..2100000000 }) {
+                        "build.versionCode must be a positive Android version code"
+                    }
+                } ?: gitVersionCode()
                 val pinnedVersionName = textSetting("build.versionName", "BUILD_VERSION_NAME")
                 versionName = pinnedVersionName ?: gitVersionName()
                 println("Build version: applicationId=$applicationId, versionCode=$versionCode, versionName=$versionName")
@@ -67,6 +71,9 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     "\"" + (pinnedVersionName ?: gitParentVersionName()) + "\"",
                 )
                 buildConfigField("String", "MAFW_APP_VERSION", "\"" + gitOwnVersionName() + "\"")
+                val assetPrefix = textSetting("update.githubAssetPrefix", "GITHUB_UPDATE_ASSET_PREFIX").orEmpty()
+                require(assetPrefix.matches(Regex("[A-Za-z0-9_.-]*"))) { "Invalid GitHub APK asset prefix" }
+                buildConfigField("String", "MAFW_GITHUB_ASSET_PREFIX", "\"$assetPrefix\"")
                 buildConfigField("String", "MAFW_FRAMEWORK_VERSION", "\"" + maaFrameworkVersion() + "\"")
                 buildConfigField(
                     "String",

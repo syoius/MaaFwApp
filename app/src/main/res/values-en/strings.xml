@@ -193,7 +193,7 @@
     <string name="update_fail_invalid_arch">Invalid architecture parameter</string>
     <string name="update_fail_invalid_channel">Invalid update channel parameter</string>
     <string name="update_fail_invalid_response">The update source returned an unparsable response</string>
-    <string name="update_fail_no_matching_asset">No matching package</string>
+    <string name="update_fail_no_matching_asset">No package has been published for this client and device on this channel</string>
     <string name="update_fail_version_invalid">Version string cannot be parsed</string>
     <string name="update_fail_unknown">Unknown error</string>
     <string name="update_download_fail_invalid_url">Invalid download URL</string>

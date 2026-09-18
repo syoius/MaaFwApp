@@ -187,7 +187,7 @@
     <string name="update_fail_invalid_arch">错误的架构参数</string>
     <string name="update_fail_invalid_channel">错误的更新通道参数</string>
     <string name="update_fail_invalid_response">更新源返回了无法解析的内容</string>
-    <string name="update_fail_no_matching_asset">没有匹配的安装包</string>
+    <string name="update_fail_no_matching_asset">当前渠道尚未发布适合此客户端及设备的安装包</string>
     <string name="update_fail_version_invalid">版本号无法解析</string>
     <string name="update_fail_unknown">未知错误</string>
     <string name="update_download_fail_invalid_url">下载地址无效</string>

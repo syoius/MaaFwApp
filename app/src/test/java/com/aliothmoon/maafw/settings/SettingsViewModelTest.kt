@@ -46,6 +46,44 @@ import java.io.File
 @OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
 
+    @Test
+    fun `unconfigured mirror default migrates to configured github`() = runTest {
+        val requests = mutableListOf<UpdateCheckRequest>()
+        val settings = FakeAppSettingsGateway().also { it.autoCheckUpdate.value = true }
+        val viewModel = viewModel(
+            settings = settings,
+            metadata = ProjectMetadata(githubRepository = "syoius/MaaYuan"),
+            service = mockk {
+                coEvery { check(any()) } coAnswers {
+                    requests += firstArg<UpdateCheckRequest>()
+                    UpdateCheckResult.SourceFailed(UpdateSource.GITHUB, UpdateCheckFailure.NO_MATCHING_ASSET)
+                }
+            },
+        )
+        advanceUntilIdle()
+        assertEquals(UpdateSource.GITHUB, settings.updateSource.value)
+        assertEquals(UpdateSource.GITHUB, requests.single().source)
+        assertEquals("syoius/MaaYuan", requests.single().githubRepository)
+        assertEquals(com.aliothmoon.maafw.BuildConfig.MAFW_GITHUB_ASSET_PREFIX, requests.single().githubAssetPrefix)
+        assertNull(latestPanel(viewModel).errorPrompt)
+        assertTrue(latestPanel(viewModel).checkResult is UpdateCheckResult.SourceFailed)
+        viewModel.onIntent(SettingsIntent.CheckUpdate)
+        advanceUntilIdle()
+        assertNotNull(latestPanel(viewModel).errorPrompt)
+    }
+
+    @Test
+    fun `unpublished local build skips startup check instead of reporting missing config`() = runTest {
+        val viewModel = viewModel(
+            settings = FakeAppSettingsGateway().also { it.autoCheckUpdate.value = true },
+            metadata = ProjectMetadata(),
+            service = mockk(),
+        )
+        advanceUntilIdle()
+        assertNull(latestPanel(viewModel).errorPrompt)
+        assertNull(latestPanel(viewModel).checkResult)
+    }
+
     private val dispatcher = UnconfinedTestDispatcher()
 
     @Before
@@ -481,6 +519,7 @@ class SettingsViewModelTest {
             )
         },
         settings: AppSettingsGateway = FakeAppSettingsGateway(),
+        metadata: ProjectMetadata = ProjectMetadata(githubRepository = "owner/repo", mirrorchyanRid = "mirror-rid"),
     ): SettingsViewModel {
         val definition = ProjectDefinition(
             name = "demo",
@@ -491,10 +530,7 @@ class SettingsViewModelTest {
             groups = emptyList(),
             options = emptyMap(),
             templates = emptyList(),
-            metadata = ProjectMetadata(
-                githubRepository = "owner/repo",
-                mirrorchyanRid = "mirror-rid",
-            ),
+            metadata = metadata,
         )
         return SettingsViewModel(
             permissionGateway = FakePermissionGateway(),

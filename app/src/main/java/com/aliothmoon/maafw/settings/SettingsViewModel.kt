@@ -81,6 +81,7 @@ class SettingsViewModel(
                             abi = abi,
                             mirrorchyanRid = mirrorchyanRid(metadata),
                             githubRepository = metadata?.githubRepository,
+                            githubAssetPrefix = BuildConfig.MAFW_GITHUB_ASSET_PREFIX,
                         ),
                     )
                 }
@@ -167,9 +168,15 @@ class SettingsViewModel(
      */
     private suspend fun startupUpdateCheck() {
         appSettings.loaded.first { it }
-        if (!appSettings.autoCheckUpdate.value) return
         val metadata = projectRepository.state.filterIsInstance<ProjectState.Ready>()
             .first().definition.metadata
+        // 只迁移没有配置的旧默认源；已有两个可用源时保留用户选择。
+        val configuredSources = UpdateSource.entries.filter { sourceConfigured(it, metadata) }
+        if (configuredSources.isEmpty()) return
+        if (appSettings.updateSource.value !in configuredSources) {
+            appSettings.setUpdateSource(configuredSources.first())
+        }
+        if (!appSettings.autoCheckUpdate.value) return
         if (updateOperation.value.checking || updateOperation.value.downloading) return
         updateOperation.update { it.copy(checking = true) }
         val result = updateService.check(
@@ -180,9 +187,15 @@ class SettingsViewModel(
                 abi = abi,
                 mirrorchyanRid = mirrorchyanRid(metadata),
                 githubRepository = metadata.githubRepository,
+                githubAssetPrefix = BuildConfig.MAFW_GITHUB_ASSET_PREFIX,
             ),
         )
         val available = result as? UpdateCheckResult.UpdateAvailable
+        if (result is UpdateCheckResult.SourceFailed && result.reason == UpdateCheckFailure.NO_MATCHING_ASSET) {
+            // 尚未发布本客户端的 APK 是渠道状态，首页展示即可，不在每次启动时打断用户。
+            updateOperation.update { it.copy(checking = false, checkResult = result) }
+            return
+        }
         if (available == null) {
             Timber.tag("UpdateCheck")
                 .w("startup check found no update: %s", result::class.simpleName)
@@ -214,6 +227,7 @@ class SettingsViewModel(
                 abi = abi,
                 mirrorchyanRid = mirrorchyanRid(metadata),
                 githubRepository = metadata?.githubRepository,
+                githubAssetPrefix = BuildConfig.MAFW_GITHUB_ASSET_PREFIX,
             ),
         )
         // 错误与更新走同一种呈现（弹窗），二者天然互斥：失败不可能同时是 UpdateAvailable
@@ -279,6 +293,7 @@ class SettingsViewModel(
                     mirrorchyanRid = mirrorchyanRid(metadata),
                     mirrorchyanCdk = cdk.takeIf(String::isNotBlank),
                     githubRepository = metadata?.githubRepository,
+                    githubAssetPrefix = BuildConfig.MAFW_GITHUB_ASSET_PREFIX,
                 ),
             )) {
                 is UpdateResolveResult.Resolved -> resolved.update
@@ -336,6 +351,11 @@ class SettingsViewModel(
 
     private fun projectMetadata(): ProjectMetadata? =
         (projectRepository.state.value as? ProjectState.Ready)?.definition?.metadata
+
+    private fun sourceConfigured(source: UpdateSource, metadata: ProjectMetadata): Boolean = when (source) {
+        UpdateSource.GITHUB -> !metadata.githubRepository.isNullOrBlank()
+        UpdateSource.MIRRORCHYAN -> !mirrorchyanRid(metadata).isNullOrBlank()
+    }
 
     private fun androidAbi(raw: String): AndroidAbi? = when (raw) {
         "arm64-v8a", "aarch64" -> AndroidAbi.ARM64

@@ -78,6 +78,7 @@ data class UpdateCheckRequest(
     val channel: UpdateChannel = UpdateChannel.STABLE,
     val mirrorchyanRid: String? = null,
     val githubRepository: String? = null,
+    val githubAssetPrefix: String? = null,
 )
 
 /** 检查产物：只回答「有没有新版本」，下载端点由 [UpdateSourceClient.resolve] 在下载时解析 */
@@ -116,6 +117,7 @@ data class UpdateResolveRequest(
     val mirrorchyanRid: String? = null,
     val mirrorchyanCdk: String? = null,
     val githubRepository: String? = null,
+    val githubAssetPrefix: String? = null,
 )
 
 /** 解析产物：下载端点与校验值 */
