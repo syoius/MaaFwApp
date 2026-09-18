@@ -12,6 +12,7 @@ import com.aliothmoon.maafw.root.BootstrapRegistry
 import com.aliothmoon.maafw.root.RootServiceBootstrapRegistry
 import com.aliothmoon.maafw.root.RootServiceStarter
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -82,7 +83,8 @@ abstract class ProcessServiceConnectorBackend(
         val token = UUID.randomUUID().toString()
         val deferred = registry.register(token)
 
-        val job = scope.launch {
+        // Publish the token before dispatch: an immediate exit must not look superseded.
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             val logFile = debugLogFile()
             var spawned = false
             // 整段包住：check(launcherFile) 等异常逃逸会让协程未捕获致崩溃
@@ -114,6 +116,7 @@ abstract class ProcessServiceConnectorBackend(
             }
         }
         activeLaunch = ActiveLaunch(token, job)
+        job.start()
     }
 
     override fun disconnect(currentBinder: IBinder?) {

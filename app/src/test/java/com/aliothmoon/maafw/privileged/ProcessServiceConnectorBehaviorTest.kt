@@ -2,13 +2,18 @@ package com.aliothmoon.maafw.privileged
 
 import android.content.Context
 import android.os.IBinder
+import com.aliothmoon.maafw.MaaDispatchers
 import com.aliothmoon.maafw.domain.RemoteBackend
 import com.aliothmoon.maafw.root.BootstrapRegistry
 import io.mockk.CapturingSlot
+import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.mockkObject
 import io.mockk.slot
+import io.mockk.unmockkObject
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -22,6 +27,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.coroutines.CoroutineContext
 
 /**
  * 进程连接器基座行为：IPC 状态机高变更区，失败 / 竞态路径必须有真行为测试兜底
@@ -211,6 +217,30 @@ class ProcessServiceConnectorBehaviorTest {
         assertTrue(error is ProcessExitedException)
         assertEquals(126, (error as ProcessExitedException).exitCode)
         assertTrue(h.spawner.awaitKill())
+    }
+
+    @Test
+    fun immediateProcessExit_reportsFailureBeforeConnectReturns() {
+        // Run the launch inline so completion can overtake connect's state publication.
+        val immediate = object : CoroutineDispatcher() {
+            override fun dispatch(context: CoroutineContext, block: Runnable) = block.run()
+        }
+        mockkObject(MaaDispatchers)
+        try {
+            every { MaaDispatchers.IO } returns immediate
+            val h = Harness(timeoutMs = 10_000L)
+            h.spawner.handle = FakeHandle(alive = false, code = 126)
+
+            h.connector.connect(h.callbacks)
+
+            assertEquals("Immediate exit must report exactly once", 1, h.callbacks.errors.size)
+            assertEquals(126, (h.callbacks.errors.single() as ProcessExitedException).exitCode)
+            assertTrue(h.registry.pending.isEmpty())
+            assertFalse(h.connector.isConnecting)
+            assertEquals(1, h.spawner.killCount())
+        } finally {
+            unmockkObject(MaaDispatchers)
+        }
     }
 
     @Test
